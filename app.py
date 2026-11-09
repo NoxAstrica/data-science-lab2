@@ -18,6 +18,9 @@ import os
 from pathlib import Path
 import warnings
 
+import subprocess
+import re
+
 warnings.filterwarnings('ignore')
 
 # Add src directory to path
@@ -116,6 +119,56 @@ def main():
     elif selected_task == "Task 6":
         show_task6()
 
+ROOT = Path(__file__).parent
+TASK_FILES = {
+    "Task 1": ("task1_data_cleaning", "test_task1_data_cleaning"),
+    "Task 2": ("task2_outlier_detection", "test_task2_outlier_detection"),
+    "Task 3": ("task3_scaling", "test_task3_scaling"),
+    "Task 4": ("task4_feature_engineering", "test_task4_feature_engineering"),
+    "Task 5": ("task5_pipeline", "test_task5_pipeline"),
+    "Task 6": ("task6_case_study", "test_task6_case_study"),
+}
+
+PLOT_DIR = ROOT / "plot"
+
+def show_saved_plots(prefix):
+    files = sorted(PLOT_DIR.glob(f"{prefix}_*.png"))
+    if not files:
+        st.info(f"No saved plots found for {prefix} in the plot/ folder.")
+        return
+    st.markdown("### Generated visualizations")
+    for i in range(0, len(files), 2):                  # two images per row
+        cols = st.columns(2)
+        for col, f in zip(cols, files[i:i + 2]):
+            caption = f.stem.replace(f"{prefix}_", "").replace("_", " ").title()
+            col.image(str(f), caption=caption, use_container_width=True)
+
+def _count(pattern, text):
+    m = re.search(pattern, text)
+    return int(m.group(1)) if m else 0
+
+
+@st.cache_data(show_spinner="Running your tests (first load takes a bit)...")
+def collect_status():
+    rows = []
+    for task, (src, test) in TASK_FILES.items():
+        src_path = ROOT / "src" / f"{src}.py"
+        loc = len(src_path.read_text(encoding="utf-8").splitlines()) if src_path.exists() else 0
+        out = subprocess.run(
+            [sys.executable, "-m", "pytest", str(ROOT / "tests" / f"{test}.py"), "-q"],
+            capture_output=True, text=True, cwd=ROOT,
+        ).stdout
+        passed, failed = _count(r"(\d+) passed", out), _count(r"(\d+) failed", out)
+        rows.append({
+            "Task": task,
+            "Status": "✅ Complete" if passed and not failed else "⚠️ Needs work",
+            "Passed": passed,
+            "Failed": failed,
+            "Tests": f"{passed}/{passed + failed}",
+            "Lines of Code": loc,
+        })
+    return pd.DataFrame(rows)
+
 
 def show_home():
     """Display home page with overview."""
@@ -167,13 +220,21 @@ def show_home():
     # Implementation status
     st.markdown("### 📈 Implementation Status")
     
-    status_df = pd.DataFrame({
-        'Task': ['Task 1', 'Task 2', 'Task 3', 'Task 4', 'Task 5', 'Task 6'],
-        'Status': ['📝 To Implement', '📝 To Implement', '📝 To Implement', 
-                   '📝 To Implement', '✅ Complete', '✅ Complete'],
-        'Tests': ['N/A', 'N/A', 'N/A', 'N/A', '34/34', '29/29'],
-        'Lines of Code': ['TBD', 'TBD', 'TBD', 'TBD', '910', '911']
-    })
+    status_df = collect_status()
+    st.dataframe(status_df.drop(columns=["Passed", "Failed"]),
+                 use_container_width=True, hide_index=True)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("#### Tests per task")
+        st.bar_chart(status_df.set_index("Task")[["Passed", "Failed"]])
+    with c2:
+        st.markdown("#### Lines of code per task")
+        st.bar_chart(status_df.set_index("Task")["Lines of Code"])
+
+    if st.button("🔄 Re-run tests"):
+        collect_status.clear()
+        st.rerun()
     
     st.dataframe(status_df, use_container_width=True, hide_index=True)
     
@@ -206,7 +267,26 @@ def show_task1():
     - Compare imputation methods
     """)
     
-    st.info("🚧 **Status**: To be implemented by students")
+    try:
+        show_saved_plots("task1")
+        from task1_data_cleaning import DataQualityAnalyzer
+        rng = np.random.default_rng(42)
+        df = pd.DataFrame({"age": rng.normal(40, 10, 300),
+                           "income": rng.normal(50000, 12000, 300),
+                           "score": rng.normal(70, 10, 300)})
+        for col in df.columns:
+            df.loc[rng.random(300) < 0.15, col] = np.nan
+        analyzer = DataQualityAnalyzer(df)
+        report = analyzer.assess_data_quality()
+        st.metric("Duplicate rows", report["duplicates"])
+        st.markdown("#### Missing values (%)")
+        st.bar_chart(pd.Series(report["missing_percentage"]))
+        analyzer.simple_imputation("mean")
+        analyzer.knn_imputation()
+        st.markdown("#### Statistics before and after imputation")
+        st.dataframe(analyzer.compare_imputation_methods())
+    except Exception as e:
+        st.error(f"Task 1 demo failed: {e}")
     
     # Demo visualization placeholder
     st.markdown("### Expected Visualizations")
@@ -271,7 +351,21 @@ def show_task2():
     - Evaluate impact on models
     """)
     
-    st.info("🚧 **Status**: To be implemented by students")
+    try:
+        show_saved_plots("task2")
+        from task2_outlier_detection import OutlierAnalyzer
+        rng = np.random.default_rng(42)
+        df = pd.DataFrame({"a": rng.normal(50, 10, 200),
+                           "b": rng.normal(0, 1, 200),
+                           "c": rng.exponential(5, 200)})
+        df.loc[:4, "a"] += 80                      # plant a few outliers
+        analyzer = OutlierAnalyzer(df)
+        st.markdown("#### Outliers found by each method")
+        st.dataframe(analyzer.get_outlier_summary())
+        st.pyplot(analyzer.visualize_outliers_boxplot())
+        plt.close("all")
+    except Exception as e:
+        st.error(f"Task 2 demo failed: {e}")
     
     # Demo visualization
     st.markdown("### Expected Visualizations")
@@ -344,7 +438,25 @@ def show_task3():
     - Provide recommendations
     """)
     
-    st.info("🚧 **Status**: To be implemented by students")
+    try:
+        show_saved_plots("task3")
+        from task3_scaling import ScalingAnalyzer
+        rng = np.random.default_rng(42)
+        df = pd.DataFrame({"age": rng.normal(40, 10, 200),
+                           "income": rng.exponential(50000, 200),
+                           "score": rng.normal(600, 80, 200)})
+        df["target"] = (df["income"] > df["income"].median()).astype(int)
+        analyzer = ScalingAnalyzer(df, target_col="target")
+        analyzer.apply_minmax_scaling()
+        analyzer.apply_standard_scaling()
+        analyzer.apply_robust_scaling()
+        st.markdown("#### Distributions before and after scaling")
+        st.pyplot(analyzer.visualize_distributions())
+        st.markdown("#### Box plots")
+        st.pyplot(analyzer.visualize_boxplots())
+        plt.close("all")
+    except Exception as e:
+        st.error(f"Task 3 demo failed: {e}")
     
     # Demo visualization
     st.markdown("### Expected Visualizations")
@@ -423,7 +535,24 @@ def show_task4():
     - Select best features
     """)
     
-    st.info("🚧 **Status**: To be implemented by students")
+    try:
+        show_saved_plots("task4")
+        from task4_feature_engineering import FeatureEngineeringPipeline
+        rng = np.random.default_rng(42)
+        df = pd.DataFrame({"A": rng.uniform(1, 10, 100), "B": rng.uniform(1, 10, 100)})
+        p = FeatureEngineeringPipeline()
+        out = p.create_mathematical_features(df, ["A"])
+        out = p.create_interaction_features(out, [("A", "B")])
+        out = p.create_polynomial_features(out, ["A", "B"])
+        st.markdown("#### Engineered data (first rows)")
+        st.dataframe(out.head())
+        st.markdown("#### Feature catalog")
+        st.dataframe(pd.DataFrame({"feature": p.feature_catalog.keys(),
+                                   "description": p.feature_catalog.values()}),
+                     hide_index=True)
+        st.bar_chart(out.corr()["A"].drop("A"))
+    except Exception as e:
+        st.error(f"Task 4 demo failed: {e}")
     
     # Demo visualization
     st.markdown("### Expected Visualizations")
@@ -498,9 +627,11 @@ def show_task5():
     st.success("✅ **Status**: Fully implemented with 34/34 tests passing")
     
     try:
+        show_saved_plots("task5")
         from task5_pipeline import PreprocessingPipeline, create_sample_dataset_with_issues
         
         # Generate sample data
+       
         with st.spinner("Generating sample dataset..."):
             X, y = create_sample_dataset_with_issues(
                 n_samples=500,
@@ -608,6 +739,7 @@ def show_task6():
     st.success("✅ **Status**: Fully implemented with 29/29 tests passing")
     
     try:
+        show_saved_plots("task6")
         from task6_case_study import DataPreprocessor, create_complex_synthetic_dataset
         
         # Controls

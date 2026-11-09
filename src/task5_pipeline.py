@@ -229,23 +229,38 @@ class PreprocessingPipeline:
         """
         steps = []
         
-        # Step 1: Imputation
-        pass
+                # Step 1: Imputation
+        if imputer_strategy == 'knn':
+            imputer = KNNImputer(n_neighbors=5)
+        elif imputer_strategy in ('mean', 'median'):
+            imputer = SimpleImputer(strategy=imputer_strategy)
+        else:
+            raise ValueError(f"Unknown imputer strategy: {imputer_strategy}")
+        steps.append(('imputer', imputer))
         
         # Step 2: Outlier handling
-        pass
+        steps.append(('outlier_handler', OutlierHandler(method=outlier_method, strategy='cap')))
         
         # Step 3: Feature engineering
-        pass
+        if feature_engineering:
+            steps.append(('feature_engineer', FeatureEngineer()))
         
         # Step 4: Scaling
-        pass
+        scalers = {
+            'standard': StandardScaler(),
+            'robust': RobustScaler(),
+            'minmax': MinMaxScaler(),
+        }
+        if scaler_type not in scalers:
+            raise ValueError(f"Unknown scaler type: {scaler_type}")
+        steps.append(('scaler', scalers[scaler_type]))
         
         # Step 5: Feature selection
-        pass
+        if feature_selection:
+            steps.append(('feature_selector', SelectKBest(f_classif, k=n_features)))
         
         # Step 6: Classifier
-        pass
+        steps.append(('classifier', LogisticRegression(max_iter=1000, random_state=self.random_state)))
         
         self.pipeline = Pipeline(steps)
         return self.pipeline
@@ -580,7 +595,7 @@ class PreprocessingPipeline:
         """
         fig, ax = plt.subplots(figsize=figsize)
         
-        bp = ax.boxplot([cv_scores], labels=['CV Scores'], patch_artist=True,
+        bp = ax.boxplot([cv_scores], tick_labels=['CV Scores'], patch_artist=True,
                        boxprops=dict(facecolor='lightblue'),
                        medianprops=dict(color='red', linewidth=2),
                        widths=0.5)

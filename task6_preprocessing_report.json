@@ -2,68 +2,16 @@
   "data_quality": {
     "shape": [
       2040,
-      30
+      42
     ],
     "total_samples": 2040,
-    "total_features": 30,
-    "memory_usage_mb": 0.728642463684082,
-    "duplicates": "40",
+    "total_features": 42,
+    "memory_usage_mb": 0.6226844787597656,
+    "duplicates": 40,
     "missing_values": {
-      "total": "7657",
-      "by_column": {
-        "feature_0": 305,
-        "feature_1": 310,
-        "feature_2": 311,
-        "feature_3": 301,
-        "feature_4": 298,
-        "feature_5": 317,
-        "feature_6": 323,
-        "feature_7": 316,
-        "feature_8": 334,
-        "feature_9": 297,
-        "feature_10": 298,
-        "feature_11": 288,
-        "feature_12": 281,
-        "feature_13": 300,
-        "feature_14": 291,
-        "feature_15": 302,
-        "feature_16": 313,
-        "feature_17": 331,
-        "feature_18": 311,
-        "feature_19": 305,
-        "feature_20": 300,
-        "feature_21": 315,
-        "feature_22": 310,
-        "feature_23": 278,
-        "feature_24": 322
-      },
-      "percentage_by_column": {
-        "feature_0": 14.950980392156863,
-        "feature_1": 15.196078431372548,
-        "feature_2": 15.245098039215687,
-        "feature_3": 14.754901960784315,
-        "feature_4": 14.607843137254903,
-        "feature_5": 15.53921568627451,
-        "feature_6": 15.833333333333332,
-        "feature_7": 15.490196078431373,
-        "feature_8": 16.372549019607842,
-        "feature_9": 14.558823529411766,
-        "feature_10": 14.607843137254903,
-        "feature_11": 14.117647058823529,
-        "feature_12": 13.77450980392157,
-        "feature_13": 14.705882352941178,
-        "feature_14": 14.26470588235294,
-        "feature_15": 14.803921568627452,
-        "feature_16": 15.343137254901961,
-        "feature_17": 16.225490196078432,
-        "feature_18": 15.245098039215687,
-        "feature_19": 14.950980392156863,
-        "feature_20": 14.705882352941178,
-        "feature_21": 15.441176470588236,
-        "feature_22": 15.196078431372548,
-        "feature_23": 13.627450980392156,
-        "feature_24": 15.784313725490195
-      }
+      "total": 0,
+      "by_column": {},
+      "percentage_by_column": {}
     },
     "data_types": {
       "feature_0": "float64",
@@ -91,11 +39,23 @@
       "feature_22": "float64",
       "feature_23": "float64",
       "feature_24": "float64",
-      "category_1": "object",
-      "category_2": "object",
-      "category_3": "object",
-      "date": "datetime64[ns]",
-      "target": "int64"
+      "target": "int64",
+      "date_year": "int32",
+      "date_month": "int32",
+      "date_day": "int32",
+      "date_dayofweek": "int32",
+      "category_1_A": "int64",
+      "category_1_B": "int64",
+      "category_1_C": "int64",
+      "category_1_D": "int64",
+      "category_1_E": "int64",
+      "category_2_Type1": "int64",
+      "category_2_Type2": "int64",
+      "category_2_Type3": "int64",
+      "category_3_High": "int64",
+      "category_3_Low": "int64",
+      "category_3_Medium": "int64",
+      "category_3_Very High": "int64"
     },
     "numeric_features": [
       "feature_0",
@@ -123,16 +83,26 @@
       "feature_22",
       "feature_23",
       "feature_24",
-      "target"
+      "target",
+      "date_year",
+      "date_month",
+      "date_day",
+      "date_dayofweek",
+      "category_1_A",
+      "category_1_B",
+      "category_1_C",
+      "category_1_D",
+      "category_1_E",
+      "category_2_Type1",
+      "category_2_Type2",
+      "category_2_Type3",
+      "category_3_High",
+      "category_3_Low",
+      "category_3_Medium",
+      "category_3_Very High"
     ],
-    "categorical_features": [
-      "category_1",
-      "category_2",
-      "category_3"
-    ],
-    "datetime_features": [
-      "date"
-    ],
+    "categorical_features": [],
+    "datetime_features": [],
     "target_distribution": {
       "1": 1433,
       "0": 607
@@ -152,5 +122,5 @@
     1214,
     31
   ],
-  "timestamp": "2025-12-15 17:17:25"
+  "timestamp": "2026-11-09 01:48:18"
 }

@@ -46,213 +46,149 @@ class FeatureEngineeringPipeline:
         self.original_features = []
         self.engineered_features = []
         self.feature_importance_scores = {}
-        
-    def create_mathematical_features(
-        self,
-        df: pd.DataFrame,
-        columns: List[str],
-        operations: List[str] = ['log', 'sqrt', 'square', 'cube']
-    ) -> pd.DataFrame:
-        """
-        Create new features using mathematical transformations.
-        
-        Parameters:
-        -----------
-        df : pd.DataFrame
-            Input dataframe
-        columns : List[str]
-            Columns to transform
-        operations : List[str]
-            Mathematical operations to apply
+
+    def _register(self, name: str, description: str) -> None:
+        """Record an engineered feature in the catalog."""
+        self.feature_catalog[name] = description
+        if name not in self.engineered_features:
+            self.engineered_features.append(name)
             
-        Returns:
-        --------
-        pd.DataFrame
-            Dataframe with added mathematical features
-        """
-        pass
+    def create_mathematical_features(self, df, columns, operations=['log', 'sqrt', 'square', 'cube']):
+        result = df.copy()
+        for col in columns:
+            if col not in result.columns:
+                continue
+            x = result[col]
+            shift = -x.min() if x.min() < 0 else 0      # makes negatives safe for log/sqrt
+            for op in operations:
+                if op == 'log':
+                    new = np.log1p(x + shift)
+                elif op == 'sqrt':
+                    new = np.sqrt(x + shift)
+                elif op == 'square':
+                    new = x ** 2
+                elif op == 'cube':
+                    new = x ** 3
+                elif op == 'reciprocal':
+                    new = 1 / x.replace(0, np.nan)      # avoid dividing by zero
+                else:
+                    raise ValueError(f"Unknown operation: {op}")
+                name = f"{col}_{op}"
+                result[name] = new
+                self._register(name, f"{op} transformation of {col}")
+        return result
+
+    def create_interaction_features(self, df, column_pairs, operations=['multiply', 'add', 'subtract', 'divide']):
+        result = df.copy()
+
+        symbols = {'multiply': 'x', 'add': 'plus', 'subtract': 'minus', 'divide': 'div', 'ratio': 'ratio'}
+        for a, b in column_pairs:
+            if a not in result.columns or b not in result.columns:
+                continue
+            for op in operations:
+                if op == 'multiply':
+                    new = result[a] * result[b]
+                elif op == 'add':
+                    new = result[a] + result[b]
+                elif op == 'subtract':
+                    new = result[a] - result[b]
+                elif op == 'divide':
+                    new = result[a] / result[b].replace(0, np.nan)
+                elif op == 'ratio':
+                    new = result[a] / (result[a] + result[b]).replace(0, np.nan)   # share of the total
+                else:
+                    raise ValueError(f"Unknown operation: {op}")
+                name = f"{a}_{symbols[op]}_{b}"
+                result[name] = new
+                self._register(name, f"{op} of {a} and {b}")
+        return result
     
-    def create_interaction_features(
-        self,
-        df: pd.DataFrame,
-        column_pairs: List[Tuple[str, str]],
-        operations: List[str] = ['multiply', 'add', 'subtract', 'divide']
-    ) -> pd.DataFrame:
-        """
-        Create interaction features between pairs of columns.
-        
-        Parameters:
-        -----------
-        df : pd.DataFrame
-            Input dataframe
-        column_pairs : List[Tuple[str, str]]
-            Pairs of columns to create interactions
-        operations : List[str]
-            Operations to apply
-            
-        Returns:
-        --------
-        pd.DataFrame
-            Dataframe with interaction features
-        """
-        pass
+    def create_aggregation_features(self, df, group_by, agg_columns,
+                                    agg_functions=['mean', 'std', 'min', 'max', 'count']):
+        result = df.copy()
+        if group_by not in result.columns:
+                    return result
+        for col in agg_columns:
+            if col not in result.columns:
+                continue
+            for func in agg_functions:
+                name = f"{col}_{func}_by_{group_by}"
+                result[name] = result.groupby(group_by)[col].transform(func)
+                if func == 'std':
+                    result[name] = result[name].fillna(0)     # a group of one has no std
+                self._register(name, f"{func} of {col} within each {group_by}")
+        return result
     
-    def create_aggregation_features(
-        self,
-        df: pd.DataFrame,
-        group_by: str,
-        agg_columns: List[str],
-        agg_functions: List[str] = ['mean', 'std', 'min', 'max', 'count']
-    ) -> pd.DataFrame:
-        """
-        Create aggregation features based on groupby operations.
-        
-        Parameters:
-        -----------
-        df : pd.DataFrame
-            Input dataframe
-        group_by : str
-            Column to group by
-        agg_columns : List[str]
-            Columns to aggregate
-        agg_functions : List[str]
-            Aggregation functions
-            
-        Returns:
-        --------
-        pd.DataFrame
-            Dataframe with aggregation features
-        """
-        pass
+    def encode_onehot(self, df, columns, drop_first=False, max_categories=10):
+        result = df.copy()
+        for col in columns:
+            if col not in result.columns:
+                continue
+            top = result[col].value_counts().nlargest(max_categories).index
+            result[col] = result[col].where(result[col].isin(top), 'Other')   # rare ones -> 'Other'
+            dummies = pd.get_dummies(result[col], prefix=col, drop_first=drop_first, dtype=int)
+            result = pd.concat([result.drop(columns=[col]), dummies], axis=1)
+            for name in dummies.columns:
+                self._register(name, f"one-hot indicator for {name}")
+        return result
+
+    def encode_label(self, df, columns):
+        result = df.copy()
+        for col in columns:
+            if col not in result.columns:
+                continue
+            encoder = LabelEncoder()
+            name = f"{col}_label"
+            result[name] = encoder.fit_transform(result[col].astype(str))
+            self.encoders[col] = encoder
+            self._register(name, f"label encoding of {col}")
+        return result                                  # original columns are kept
+
+    def encode_target(self, df, columns, target, smoothing=0.0):
+        result = df.copy()
+        if target not in result.columns:
+            return result
+        global_mean = result[target].mean()
+        for col in columns:
+            if col not in result.columns:
+                continue
+            stats_ = result.groupby(col)[target].agg(['mean', 'count'])
+            smooth = (stats_['count'] * stats_['mean'] + smoothing * global_mean) / (stats_['count'] + smoothing)
+            name = f"{col}_target"
+            result[name] = result[col].map(smooth)
+            self.encoders[f"{col}_target"] = smooth
+            self._register(name, f"mean of {target} per {col} (smoothing={smoothing})")
+        return result
+
+    def encode_frequency(self, df, columns):
+        result = df.copy()
+        for col in columns:
+            if col not in result.columns:
+                continue
+            freq = result[col].value_counts(normalize=True)
+            name = f"{col}_freq"
+            result[name] = result[col].map(freq)
+            self.encoders[f"{col}_freq"] = freq
+            self._register(name, f"relative frequency of each {col} category")
+        return result
     
-    def encode_onehot(
-        self,
-        df: pd.DataFrame,
-        columns: List[str],
-        drop_first: bool = False,
-        max_categories: int = 10
-    ) -> pd.DataFrame:
-        """
-        Apply one-hot encoding to categorical columns.
-        
-        Parameters:
-        -----------
-        df : pd.DataFrame
-            Input dataframe
-        columns : List[str]
-            Categorical columns to encode
-        drop_first : bool
-            Whether to drop first category to avoid multicollinearity
-        max_categories : int
-            Maximum number of categories (others grouped as 'Other')
-            
-        Returns:
-        --------
-        pd.DataFrame
-            Dataframe with one-hot encoded features
-        """
-        pass
-    
-    def encode_label(
-        self,
-        df: pd.DataFrame,
-        columns: List[str]
-    ) -> pd.DataFrame:
-        """
-        Apply label encoding to categorical columns.
-        
-        Parameters:
-        -----------
-        df : pd.DataFrame
-            Input dataframe
-        columns : List[str]
-            Categorical columns to encode
-            
-        Returns:
-        --------
-        pd.DataFrame
-            Dataframe with label encoded features
-        """
-        pass
-    
-    def encode_target(
-        self,
-        df: pd.DataFrame,
-        columns: List[str],
-        target: str,
-        smoothing: float = 0.0
-    ) -> pd.DataFrame:
-        """
-        Apply target encoding to categorical columns.
-        
-        Parameters:
-        -----------
-        df : pd.DataFrame
-            Input dataframe
-        columns : List[str]
-            Categorical columns to encode
-        target : str
-            Target column name
-        smoothing : float
-            Smoothing parameter to avoid overfitting
-            
-        Returns:
-        --------
-        pd.DataFrame
-            Dataframe with target encoded features
-        """
-        pass
-    
-    def encode_frequency(
-        self,
-        df: pd.DataFrame,
-        columns: List[str]
-    ) -> pd.DataFrame:
-        """
-        Apply frequency encoding to categorical columns.
-        
-        Parameters:
-        -----------
-        df : pd.DataFrame
-            Input dataframe
-        columns : List[str]
-            Categorical columns to encode
-            
-        Returns:
-        --------
-        pd.DataFrame
-            Dataframe with frequency encoded features
-        """
-        pass
-    
-    def create_polynomial_features(
-        self,
-        df: pd.DataFrame,
-        columns: List[str],
-        degree: int = 2,
-        include_bias: bool = False
-    ) -> pd.DataFrame:
-        """
-        Create polynomial features.
-        
-        Parameters:
-        -----------
-        df : pd.DataFrame
-            Input dataframe
-        columns : List[str]
-            Columns to create polynomial features from
-        degree : int
-            Polynomial degree
-        include_bias : bool
-            Whether to include bias column
-            
-        Returns:
-        --------
-        pd.DataFrame
-            Dataframe with polynomial features
-        """
-        pass
-    
+    def create_polynomial_features(self, df, columns, degree=2, include_bias=False):
+        result = df.copy()
+        columns = [c for c in columns if c in result.columns]
+        if not columns:
+            return result
+
+        poly = PolynomialFeatures(degree=degree, include_bias=include_bias)
+        values = poly.fit_transform(result[columns])
+        names = poly.get_feature_names_out(columns)
+        for i, raw in enumerate(names):
+            if raw in columns:                         # originals are already there
+                continue
+            name = "poly_" + raw.replace(" ", "_").replace("^", "_pow")
+            result[name] = values[:, i]
+            self._register(name, f"polynomial term (degree <= {degree}): {raw}")
+        return result
+
     def select_features_univariate(
         self,
         X: pd.DataFrame,
